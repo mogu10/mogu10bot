@@ -1,0 +1,5 @@
+/docker-compose.yml
+/docker_postgres_init.sql
+/Dockerfile
+/go.mod
+/go.sum

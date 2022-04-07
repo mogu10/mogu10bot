@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"database/sql"
+	"fmt"
+)
 
 type user struct {
 	tgId      int64  `db:"tg_id"`
@@ -10,19 +13,32 @@ type user struct {
 	lastName  string `db:"last_name, omitempty"`
 }
 
+// a.trofimenko #2
+// на примере этой же функции. Вопрос по работе с БД в проекте
+// допустима ли такая работа с базой данных. Без универсальной функции добавления в БД.
+// пример: сейчас у меня есть 2 функции addUser() и addOneBeer(). Обе добавляют запись в базу
+// а могла быть функция в db.go addRow(), которой передавались бы нужные параметры. Улучшит ли это код?
+
+//P.S. Любые замечания не по темам вопросов приветствуются )
+
 func addUser(u user) {
 	db, err := connectDB()
-	if err != nil {
+	if err != nil { //проверяем, что коннект успешен
 		panic(err)
 	}
 
 	_, err = db.Exec("insert into users (tg_id, tg_nick, first_name, last_name) values ($1, $2 , $3, $4)",
 		u.tgId, u.tgNick, u.firstName, u.lastName)
-	if err != nil {
+	if err != nil { //проверяем, что не было ошибок при добавлении юзера
 		panic(err)
 	}
 
-	defer db.Close()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+
+		}
+	}(db)
 }
 
 func getJokeName(tgId int64) string {
