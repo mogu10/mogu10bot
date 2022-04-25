@@ -5,12 +5,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func connectDB() (*sql.DB, error) {
-	connStr := "user=postgres password= dbname=mogu10botdb sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		panic(err)
+var db *sql.DB
+
+func connectDB(сonnStr string) (dbr *sql.DB, err error) {
+	if db != nil {
+		return db, nil
 	}
 
-	return db, err
+	dbr, err = sql.Open("postgres", сonnStr)
+	return dbr, err
 }

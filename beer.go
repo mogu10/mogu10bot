@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/jackc/pgtype"
 	"time"
 )
@@ -14,33 +13,20 @@ type beer struct {
 	createdAt pgtype.Date
 }
 
-func addOneBeer(userId int64, size float32) {
-	db, err := connectDB()
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Exec("insert into beers (user_id, price, created_at, size) values ($1, $2 , $3, $4)",
+func addOneBeer(userId int64, size float32) error {
+	_, err := db.Exec("insert into beers (user_id, price, created_at, size) values ($1, $2 , $3, $4)",
 		userId, 100, time.Now(), size)
 	if err != nil {
-		panic(err)
+		return err
 	}
-
-	defer db.Close()
+	return nil
 }
 
-func getBeersOfUser(userId int64) []beer {
-	db, err := connectDB()
-	if err != nil {
-		panic(err)
-	}
-
+func getBeersOfUser(userId int64) ([]beer, error) {
 	rows, err := db.Query("select id, user_id, price, size, created_at from beers where user_id = $1", userId)
 	if err != nil {
 		panic(err)
 	}
-
-	defer rows.Close()
 
 	var beers []beer
 	for rows.Next() {
@@ -48,40 +34,40 @@ func getBeersOfUser(userId int64) []beer {
 
 		err := rows.Scan(&b.id, &b.userId, &b.price, &b.size, &b.createdAt)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return nil, err
 		}
 		beers = append(beers, b)
 	}
 
-	return beers
+	return beers, nil
 }
 
-func getBeerCount(userId int64) float32 {
+func getBeerCount(userId int64) (float32, error) {
 	var sum float32 = 0
-	beers := getBeersOfUser(userId)
+	beers, err := getBeersOfUser(userId)
 
-	for _, b := range beers {
-		sum += b.size
+	if err == nil {
+		for _, b := range beers {
+			sum += b.size
+		}
+		return sum, nil
 	}
-
-	return sum
+	return 0, err
 }
 
-func addPriceLastBeer(userId int64, p int) {
-	beers := getBeersOfUser(userId)
-	lastBeer := beers[len(beers)-1]
+func addPriceLastBeer(userId int64, p int) error {
+	beers, err := getBeersOfUser(userId)
 
-	db, err := connectDB()
-	if err != nil {
-		panic(err)
+	if err == nil {
+		lastBeer := beers[len(beers)-1]
+
+		_, err = db.Exec("update beers set price = $1 where id = $2", p, lastBeer.id)
+
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
-	_, err = db.Exec("update beers set price = $1 where id = $2", p, lastBeer.id)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer db.Close()
+	return err
 }

@@ -9,9 +9,17 @@ import (
 )
 
 func main() {
-	bot, err := tgbotapi.NewBotAPI("")
+	var err error
+
+	connStr := "user=postgres password=paketik26 dbname=mogu10botdb sslmode=disable"
+	db, err = connectDB(connStr)
 	if err != nil {
-		log.Panic(err)
+		log.Println(err)
+	}
+
+	bot, err := tgbotapi.NewBotAPI("5149822295:AAHV3IXmoKxEw0wraewx7tXfAEA12sPQaIk")
+	if err != nil {
+		log.Println(err)
 	}
 
 	bot.Debug = true
@@ -33,14 +41,19 @@ func main() {
 			u.firstName = update.Message.Chat.FirstName
 			u.lastName = update.Message.Chat.LastName
 
-			if checkUser(u.tgId) != u.tgId { //Проверит есть ли такой пользователь в базе
+			uId, err := checkUser(u.tgId)
+			if err != nil {
+				log.Println(err)
+			}
 
-				//a.trofimenko #1
-				//след. функция добавляет юзера в таблицу. Не возвращает ошибку.
-				//вопрос: по-хорошему должна ли она возвращать ее, если все возможные ошибки уже учтены в самой функции и во вложенной?
-				//или я не все учел?
-				//(исключая момент, когда мне нужно в связи с ошибкой что-то сообщить пользователю. Здесь нужно было бы вернуть err)
-				addUser(*u)
+			if uId != u.tgId { //Проверит есть ли такой пользователь в базе
+
+				err = addUser(*u)
+				if err != nil {
+					bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+						"Произошла ошибка при проверке пользователя"))
+					continue
+				}
 
 				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
 					"Приветствую нового алкаша в нашей пати! Нас пока только *мало*. "+
@@ -58,10 +71,11 @@ func main() {
 				str := re.FindString(update.Message.Text)
 				p, err := strconv.Atoi(str)
 				if err == nil {
-					addPriceLastBeer(u.tgId, p)
-					bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
-						"цена последнего пива изменена на "+strconv.Itoa(p)))
-					continue
+					if addPriceLastBeer(u.tgId, p) == nil {
+						bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+							"цена последнего пива изменена на "+strconv.Itoa(p)))
+						continue
+					}
 				}
 			}
 
@@ -80,21 +94,43 @@ func main() {
 					"Семья это, конечно, главное. Но твоя судя по всему от тебя отказалась.\nПей нормальные объемы. А то как девка"))
 
 			case "Добавь 0.5":
-				addOneBeer(u.tgId, 0.5)
+				err = addOneBeer(u.tgId, 0.5)
 
-				f := tgbotapi.FileURL("https://i.imgur.com/unQLJIb.jpg") //отсылем какую-то картинку
-				bot.Send(tgbotapi.NewPhoto(update.Message.Chat.ID, f))
+				if err == nil {
+					f := tgbotapi.FileURL("https://i.imgur.com/unQLJIb.jpg") //отсылаем какую-то картинку
+					bot.Send(tgbotapi.NewPhoto(update.Message.Chat.ID, f))
 
-				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
-					"Нольпяшка добавлена. Всосано литров: "+fmt.Sprintf("%.1f", getBeerCount(u.tgId))))
+					cBeers, err := getBeerCount(u.tgId)
 
-				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
-					"Чтобы указать цену этого пива напиши **/цена ххх**"))
+					if err == nil {
+						bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+							"Нольпяшка добавлена. Всосано литров: "+fmt.Sprintf("%.1f", cBeers)))
+
+						bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+							"Чтобы указать цену этого пива напиши **/цена ххх**"))
+					}
+
+				} else {
+					bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+						"Ошибка, бутылка не была добавлена."))
+				}
 
 			case "Добавь литрушку":
-				addOneBeer(u.tgId, 1)
-				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
-					"Литрушка добавлена. Всосано литров: "+fmt.Sprintf("%.1f", getBeerCount(u.tgId))))
+				err = addOneBeer(u.tgId, 1)
+				if err == nil {
+					cBeers, err := getBeerCount(u.tgId)
+
+					if err == nil {
+						bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+							"Литрушка добавлена. Всосано литров: "+fmt.Sprintf("%.1f", cBeers)))
+
+						bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+							"Чтобы указать цену этого пива напиши **/цена ххх**"))
+					}
+				} else {
+					bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+						"Ошибка, бутылка не была добавлена."))
+				}
 
 			case "close":
 				msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
@@ -104,8 +140,11 @@ func main() {
 					"Укажи цену педыдущей бутылки в рублях."))
 
 			default:
-				bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
-					"Слышь, "+getJokeName(update.Message.From.ID)+", нет такой команды в боте "))
+				jName, err := getJokeName(update.Message.From.ID)
+				if err != nil {
+					bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID,
+						"Слышь, "+jName+", нет такой команды в боте "))
+				}
 			}
 		}
 	}
@@ -115,7 +154,7 @@ func addBeerButtons(msg *tgbotapi.MessageConfig) { //добавляет кноп
 
 	var keyboard = tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
-			//tgbotapi.NewKeyboardButton("Добавь 0.3"), //пушто это объем детской соски
+			tgbotapi.NewKeyboardButton("Добавь 0.3"), //пушто это объем детской соски
 			tgbotapi.NewKeyboardButton("Добавь 0.5"),
 			tgbotapi.NewKeyboardButton("Добавь литрушку"),
 			//tgbotapi.NewKeyboardButton("Статистика"),
